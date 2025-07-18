@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8" />
+        <title>Private YouTube Player</title>
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <script src="https://unpkg.com/youtube-sprite-player@1.1.0/dist/index.umd.js"></script>
+        <style>
+            :root {
+                --bg: #0e0e0e;
+                --panel: #181818;
+                --accent: #ff0000;
+                --text: #f1f1f1;
+                --sub: #aaa;
+                --err: #ff4c4c;
+            }
+
+            * {
+                box-sizing: border-box;
+                font-family: system-ui, Arial, sans-serif
+            }
+
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                display: flex;
+                flex-direction: column;
+                height: 100vh
+            }
+
+            header {
+                background: var(--panel);
+                padding: 6px 10px;
+                display: flex;
+                gap: 6px;
+                align-items: center
+            }
+
+            header input[type=password],
+            header input[type=text] {
+                flex: 1;
+                padding: 6px 8px;
+                border: none;
+                border-radius: 3px
+            }
+
+            header button {
+                padding: 6px 10px;
+                border: none;
+                border-radius: 3px;
+                background: var(--accent);
+                color: #fff;
+                cursor: pointer
+            }
+
+            header button:disabled {
+                opacity: .5;
+                cursor: not-allowed
+            }
+
+            #togglePw {
+                background: #333;
+                color: #fff
+            }
+
+            .wrap {
+                flex: 1;
+                display: flex;
+                min-height: 0
+            }
+
+            #player {
+                flex: 2;
+                background: #000;
+                position: relative;
+                overflow: hidden
+            }
+
+            #player iframe {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%
+            }
+
+            #results {
+                flex: 1;
+                background: var(--panel);
+                overflow-y: auto;
+                padding: 6px
+            }
+
+            .item {
+                display: flex;
+                gap: 12px;
+                padding: 8px;
+                border-bottom: 1px solid #222;
+                cursor: pointer;
+                background: var(--panel);
+                color: var(--text);
+            }
+
+            .item img {
+                width: 180px;
+                /* ↑ bigger */
+                height: 102px;
+                /* 16:9 */
+                object-fit: cover;
+                border-radius: 4px;
+                flex-shrink: 0;
+            }
+
+            .item p {
+                margin: 2px 0;
+                font-size: .85em;
+                color: var(--sub)
+            }
+
+            .item b {
+                color: var(--text)
+            }
+
+            .mini-player {
+                width: 120px;
+                height: 68px;
+                border-radius: 4px
+            }
+
+            .spinner {
+                border: 3px solid #222;
+                border-top: 3px solid var(--accent);
+                border-radius: 50%;
+                width: 18px;
+                height: 18px;
+                animation: spin 1s linear infinite;
+                margin: auto
+            }
+
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg)
+                }
+            }
+
+            .toast {
+                position: fixed;
+                top: 12px;
+                right: 12px;
+                background: #222;
+                color: #fff;
+                padding: 8px 12px;
+                border-radius: 4px;
+                font-size: .85em
+            }
+
+            .toast.err {
+                background: var(--err)
+            }
+
+            /* 1. match the new thumbnail size */
+            .mini-player,
+            .thumbWrapper {
+                width: 180px;
+                height: 102px;
+                border-radius: 4px;
+                overflow: visible;
+                /* keeps iframe corners rounded */
+            }
+
+            /* 2. smooth swap */
+            .thumbWrapper img,
+            .mini-player {
+                transition: opacity .15s;
+            }
+
+            .mini-player iframe {
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover;
+                /* or 'contain' if you prefer black bars */
+            }
+
+            #channelView {
+                flex: 1;
+                background: var(--panel);
+                padding: 10px;
+                overflow-y: auto;
+                display: none;
+                /* hidden by default */
+            }
+
+            #channelView h2 {
+                margin: 0 0 10px;
+                font-size: 1.1em
+            }
+
+            .channelSection {
+                margin-bottom: 20px
+            }
+
+            .channelSection h3 {
+                margin: 0 0 6px;
+                font-size: .95em;
+                color: var(--sub)
+            }
+
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 8px
+            }
+
+            .grid .item {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                font-size: .8em
+            }
+
+            .grid .item img {
+                width: 100%;
+                height: auto;
+                border-radius: 4px
+            }
+
+            .backBtn {
+                cursor: pointer;
+                margin-bottom: 8px;
+                background: #333;
+                color: #fff;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 3px
+            }
+
+            .tabBtn {
+                background: #333;
+                color: #fff;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 3px;
+                cursor: pointer;
+            }
+
+            .tabBtn.active {
+                background: var(--accent)
+            }
+
+            .playlistItem {
+                cursor: pointer;
+                padding: 4px 0;
+            }
+
+            .playlistItem.active {
+                font-weight: bold;
+                color: var(--accent)
+            }
+
+            .playlistThumbWrap {
+                position: relative;
+                display: inline-block;
+                vertical-align: middle
+            }
+
+            .mini-playlist-player {
+                width: 80px;
+                height: 45px;
+                border-radius: 3px
+            }
+        </style>
+    </head>
+
+    <body>
+        <header>
+            <input id="apiKey" type="password" placeholder="Your YouTube Data-API key" autocomplete="off" />
+            <button id="togglePw" title="Show / hide key">👁</button>
+            <input id="query" type="text" placeholder="Search videos…" autocomplete="off" />
+            <button id="searchBtn">Search</button>
+            <button id="clearKey" title="Forget key">Clear key</button>
+        </header>
+
+        <div class="wrap">
+            <div id="player"></div>
+            <div id="results"></div>
+            <div id="channelView">
+                <button class="backBtn" onclick="closeChannel()">← Back to search</button>
+
+                <h2 id="channelTitle"></h2>
+
+                <!-- TAB BAR -->
+                <nav id="tabBar" style="display:flex;gap:8px;margin-bottom:10px;font-size:.9em">
+                    <button class="tabBtn active" onclick="switchTab('videos')">Videos</button>
+                    <button class="tabBtn" onclick="switchTab('shorts')">Shorts</button>
+                    <button class="tabBtn" onclick="switchTab('lives')">Lives</button>
+                    <button class="tabBtn" onclick="switchTab('releases')">Releases</button>
+                    <button class="tabBtn" onclick="switchTab('playlists')">Playlists</button>
+                    <button class="tabBtn" onclick="switchTab('posts')">Posts</button>
+                </nav>
+
+                <!-- CONTENT PANELS -->
+                <div id="videosPanel" class="grid"></div>
+                <div id="shortsPanel" class="grid" style="display:none;"></div>
+                <div id="livesPanel" class="grid" style="display:none;"></div>
+                <div id="releasesPanel" class="grid" style="display:none;"></div>
+                <div id="playlistsPanel" class="grid" style="display:none;"></div>
+                <div id="postsPanel" class="grid" style="display:none;"></div>
+            </div>
+
+            <!-- floating playlist drawer -->
+            <div id="playlistPanel" style="
+                position:fixed;right:0;top:0;width:280px;height:100vh;
+                background:var(--panel);color:var(--text);
+                overflow-y:auto;padding:10px;font-size:.9em;
+                display:none;z-index:9999;
+            ">
+                <button onclick="closePlaylist()" style="float:right;border:none;background:none;color:#fff;">✕</button>
+                <h3 id="playlistTitle">Playlist</h3>
+                <ol id="playlistList" style="padding-left:20px;margin:0;"></ol>
+            </div>
+        </div>
+
+        <script>
+            /* ========= 1.  YouTube IFrame Player ========= */
+            const tag = document.createElement('script'); tag.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(tag);
+            let player;
+            window.onYouTubeIframeAPIReady = () => {
+                player = new YT.Player('player', {
+                    height: '100%', width: '100%',
+                    videoId: 'M7lc1UVf-VE',
+                    playerVars: { rel: 0, showinfo: 0 }
+                });
+            };
+
+            /* ========= 2.  Helpers ========= */
+            const apiKeyInput = document.getElementById('apiKey');
+            const queryInput = document.getElementById('query');
+            const searchBtn = document.getElementById('searchBtn');
+            const resultsBox = document.getElementById('results');
+            const togglePwBtn = document.getElementById('togglePw');
+            const clearBtn = document.getElementById('clearKey');
+
+            /* ===== one-liner auto-load (waits until DB is ready) ===== */
+            let queue = [], qPtr = 0, hoverTimer = null, miniPlayer = null;
+
+            /* --- Key persistence (sessionStorage only, disappears on tab close) --- */
+            const STORAGE_KEY = 'ytApiKey';
+            if (sessionStorage[STORAGE_KEY]) apiKeyInput.value = sessionStorage[STORAGE_KEY];
+
+            /* --- Show / hide key --- */
+            togglePwBtn.onclick = () => {
+                apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
+                apiKeyInput.focus();
+            };
+
+            /* --- Clear key --- */
+            clearBtn.onclick = () => {
+                apiKeyInput.value = '';
+                sessionStorage.removeItem(STORAGE_KEY);
+                toast('Key forgotten');
+                apiKeyInput.focus();
+            };
+
+            document.addEventListener('keydown', e => {
+                if (e.target.tagName === 'INPUT') return;
+                switch (e.code) {
+                    case 'Space': player.getPlayerState() === 1 ? player.pauseVideo() : player.playVideo(); break;
+                    case 'ArrowLeft': player.seekTo(player.getCurrentTime() - 5, true); break;
+                    case 'ArrowRight': player.seekTo(player.getCurrentTime() + 5, true); break;
+                }
+            });
+
+            /* --- Toast notification --- */
+            function toast(msg, isError = false) {
+                const d = document.createElement('div');
+                d.className = 'toast' + (isError ? ' err' : '');
+                d.textContent = msg;
+                document.body.appendChild(d);
+                setTimeout(() => d.remove(), 3000);
+            }
+
+            function playVideo(id) {
+                // remove old highlight
+                document.querySelectorAll('.item').forEach(el => el.style.background = '');
+                player.loadVideoById(id);
+                // add new highlight
+                const idx = data.items.findIndex(i => i.id.videoId === id);
+                if (idx > -1) document.querySelectorAll('.item')[idx].style.background = '#282828';
+            }
+
+            /* ------------------------------------------------------------ */
+            /*  mini-preview without watermark (hover anywhere on .item)    */
+            /* ------------------------------------------------------------ */
+            let miniVid = null;
+            /* ---------- single reusable mini-player ---------- */
+            let miniFrame = null;   // <iframe>
+
+            function startMini(wrapper, vid) {
+                /* 1️⃣ create iframe once */
+                if (!miniFrame) {
+                    miniFrame = document.createElement('iframe');
+                    miniFrame.style.cssText = `
+      position:absolute;top:0;left:0;width:100%;height:100%;
+      border:none;border-radius:4px;
+    `;
+                    miniFrame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+                }
+
+                /* 2️⃣ attach / detach */
+                if (miniFrame.parentElement !== wrapper) {
+                    wrapper.style.position = 'relative';
+                    wrapper.appendChild(miniFrame);
+                }
+
+                /* 3️⃣ load new video (muted, controls=0, modestbranding=1) */
+                miniFrame.src = `https://www.youtube.com/embed/${vid}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&showinfo=0`;
+
+                /* 4️⃣ hide thumbnail while preview runs */
+                wrapper.querySelector('img').style.display = 'none';
+            }
+
+            function stopMini() {
+                if (miniFrame) {
+                    miniFrame.removeAttribute('src');  // stop playback
+                    miniFrame.remove();                // detach from DOM
+                    miniFrame = null;
+                }
+                document.querySelectorAll('.thumbWrapper img').forEach(img => img.style.display = 'block');
+            }
+
+            let currentChannelId = '';
+
+            function openChannel(channelId, channelName) {
+                currentChannelId = channelId;
+                // show pane, hide others
+                document.getElementById('player').parentElement.style.display = 'flex';
+                document.getElementById('results').style.display = 'none';
+                document.getElementById('channelView').style.display = 'block';
+
+                document.getElementById('channelTitle').textContent = channelName;
+                document.querySelectorAll('.tabBtn').forEach(b => b.classList.remove('active'));
+                document.querySelector('.tabBtn').classList.add('active');
+                switchTab('videos');   // default
+            }
+
+            function closeChannel() {
+                document.getElementById('channelView').style.display = 'none';
+                document.getElementById('player').parentElement.style.display = 'flex';
+                document.getElementById('results').style.display = 'block';
+            }
+
+            function switchTab(type) {
+                // highlight correct button
+                document.querySelectorAll('.tabBtn').forEach(b => b.classList.remove('active'));
+                document.querySelector(`[onclick="switchTab('${type}')"]`).classList.add('active');
+
+                // hide all panels
+                ['videos', 'shorts', 'lives', 'releases', 'playlists', 'posts']
+                    .forEach(t => document.getElementById(t + 'Panel').style.display = 'none');
+
+                // show chosen panel
+                const panel = document.getElementById(type + 'Panel');
+                panel.style.display = 'grid';
+                panel.innerHTML = '<div class="spinner"></div>';
+
+                const key = apiKeyInput.value.trim();
+                if (!key) { toast('Need API key', true); return; }
+
+                /* build correct query per tab */
+                let url = '';
+                switch (type) {
+                    case 'videos':
+                        url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${currentChannelId}&type=video&order=date&maxResults=25&key=${key}`;
+                        break;
+                    case 'shorts':
+                        url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${currentChannelId}&type=video&order=date&maxResults=25&videoDuration=short&key=${key}`;
+                        break;
+                    case 'lives':
+                        url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${currentChannelId}&type=video&eventType=completed&order=date&maxResults=25&key=${key}`;
+                        break;
+                    case 'releases':
+                        url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${currentChannelId}&type=video&order=date&maxResults=25&videoDuration=medium&key=${key}`;
+                        break;   // medium=common for music releases; tune as needed
+                    case 'playlists':
+                        url = `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${currentChannelId}&maxResults=25&key=${key}`;
+                        break;
+                    case 'posts':
+                        url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${currentChannelId}&type=channel&maxResults=0&key=${key}`;
+                        // no official “posts” endpoint for v3; show placeholder
+                        setTimeout(() => {
+                            panel.innerHTML = '<p>Community posts are not available via the public API</p>';
+                        }, 100);
+                        return;
+                }
+
+                fetch(url)
+                    .then(r => r.json())
+                    .then(data => renderTabGrid(data.items || [], type));
+            }
+
+            function renderTabGrid(items, tab) {
+                const panel = document.getElementById(tab + 'Panel');
+                panel.innerHTML = '';
+                items.forEach(it => {
+                    const div = document.createElement('div');
+                    div.className = 'item';
+                    const id = it.id.videoId || it.id;
+                    div.innerHTML = `
+            <img src="${it.snippet.thumbnails.medium.url}">
+            <p>${it.snippet.title}</p>`;
+                    div.onclick = () => {
+                        if (tab === 'playlists') {
+                            loadPlaylist(id);   // open playlist
+                        } else {
+                            playNow(id);        // open single video
+                        }
+                    };
+                    panel.appendChild(div);
+                });
+            }
+
+            function renderGrid(items, targetId) {
+                const box = document.getElementById(targetId);
+                box.innerHTML = '';
+                items.forEach(it => {
+                    const div = document.createElement('div');
+                    div.className = 'item';
+                    const id = it.id.videoId || it.id;
+                    div.innerHTML = `
+          <img src="${it.snippet.thumbnails.medium.url}">
+          <p>${it.snippet.title}</p>`;
+                    div.onclick = () => playNow(id);
+                    box.appendChild(div);
+                });
+            }
+
+            let playlistData = [];   // {id, title}
+            let playlistIndex = 0;
+            let playlistIdGlobal = '';
+
+            function loadPlaylist(plId) {
+                playlistIdGlobal = plId;
+                const key = apiKeyInput.value.trim();
+                if (!key) { toast('Need API key', true); return; }
+
+                // 1. fetch all items (50 at a time pagination)
+                fetchPagePlaylist(plId, key, [], 0);
+            }
+
+            function fetchPagePlaylist(plId, key, acc, pageToken) {
+                let url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${plId}&maxResults=50&key=${key}`;
+                if (pageToken) url += `&pageToken=${pageToken}`;
+
+                fetch(url)
+                    .then(r => r.json())
+                    .then(data => {
+                        const items = data.items.map(i => ({
+                            id: i.snippet.resourceId.videoId,
+                            title: i.snippet.title
+                        }));
+                        acc = acc.concat(items);
+
+                        if (data.nextPageToken) {
+                            // still more pages
+                            fetchPagePlaylist(plId, key, acc, data.nextPageToken);
+                        } else {
+                            // finished
+                            playlistData = acc;
+                            playlistIndex = 0;
+                            showPlaylistDrawer(acc, data.items[0]?.snippet.playlistTitle || 'Playlist');
+                            playPlaylistVideo(0);   // start first
+                        }
+                    });
+            }
+
+            /* ---------- draw drawer ---------- */
+            function showPlaylistDrawer(videos, title) {
+                document.getElementById('playlistTitle').textContent = title;
+                const ul = document.getElementById('playlistList');
+                ul.innerHTML = '';
+
+                videos.forEach((v, i) => {
+                    const li = document.createElement('li');
+                    li.className = 'playlistItem' + (i === playlistIndex ? ' active' : '');
+
+                    /* thumbnail wrapper (holds both img + iframe) */
+                    const wrap = document.createElement('span');
+                    wrap.className = 'playlistThumbWrap';
+                    wrap.style.position = 'relative';
+                    wrap.style.display = 'inline-block';
+                    wrap.style.width = '180px';
+                    wrap.style.height = '102px';
+                    wrap.style.verticalAlign = 'middle';
+                    wrap.style.marginRight = '6px';
+
+                    /* thumbnail image */
+                    const img = document.createElement('img');
+                    img.src = `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '3px';
+                    wrap.appendChild(img);
+
+                    /* hover mini-player (180×102) */
+                    ['mouseenter', 'mouseleave'].forEach(evt =>
+                        li.addEventListener(evt, e => {
+                            clearTimeout(window.playHoverTimer);
+                            if (e.type === 'mouseenter') {
+                                window.playHoverTimer = setTimeout(() => {
+                                    if (!miniFrame) {
+                                        miniFrame = document.createElement('iframe');
+                                        miniFrame.className = 'mini-playlist-player';
+                                        miniFrame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+                                        miniFrame.style.cssText = `
+                                position:absolute;top:0;left:0;width:100%;height:100%;
+                                border:none;border-radius:3px;
+                            `;
+                                    }
+                                    img.style.display = 'none';
+                                    wrap.appendChild(miniFrame);
+                                    miniFrame.src = `https://www.youtube.com/embed/${v.id}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0`;
+                                }, 700);
+                            } else {
+                                if (miniFrame) miniFrame.remove();
+                                img.style.display = 'block';
+                            }
+                        })
+                    );
+
+                    /* video title */
+                    const txt = document.createElement('span');
+                    txt.textContent = ` ${v.title}`;
+
+                    /* build row */
+                    li.appendChild(wrap);
+                    li.appendChild(txt);
+
+                    li.addEventListener('click', (e) => {
+                        if (e.target.closest('.playlistThumbWrap')) return;
+                        playPlaylistVideo(i);
+                    });
+                    ul.appendChild(li);
+                });
+
+                document.getElementById('playlistPanel').style.display = 'block';
+            }
+
+            function closePlaylist() {
+                document.getElementById('playlistPanel').style.display = 'none';
+                playlistData = [];
+            }
+
+            /* ---------- play nth video & auto-advance ---------- */
+            function playPlaylistVideo(index) {
+                if (index < 0 || index >= playlistData.length) return;
+                playlistIndex = index;
+                updatePlaylistHighlight();
+                player.loadVideoById(playlistData[index].id);
+
+                // auto-advance on end
+                player.removeEventListener('onStateChange', onPlaylistEnd);
+                player.addEventListener('onStateChange', onPlaylistEnd);
+            }
+            function onPlaylistEnd(e) {
+                if (e.data === 0) {               // ended
+                    playlistIndex++;
+                    if (playlistIndex < playlistData.length) {
+                        playPlaylistVideo(playlistIndex);
+                    } else {
+                        toast('Playlist finished');
+                    }
+                }
+            }
+            function updatePlaylistHighlight() {
+                document.querySelectorAll('.playlistItem').forEach((li, i) => {
+                    li.classList.toggle('active', i === playlistIndex);
+                });
+            }
+
+
+            /* ------------------------------------------------------------ */
+            /*  render search results (hover on whole row)                  */
+            /* ------------------------------------------------------------ */
+            function renderResults(data) {
+                resultsBox.innerHTML = '';
+                data.items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'item';
+                    div.dataset.vid = item.id.videoId;
+                    div.innerHTML = `
+  <div class="thumbWrapper" style="position:relative">
+    <img src="${item.snippet.thumbnails.medium.url}">
+  </div>
+  <div>
+    <p><b>${item.snippet.title}</b></p>
+    <p style="cursor:pointer;color:var(--accent)"
+       onclick="event.stopPropagation(); openChannel('${item.snippet.channelId}', '${item.snippet.channelTitle}')">
+       ${item.snippet.channelTitle}
+    </p>
+  </div>`;
+
+                    /* hover on the WHOLE row */
+                    div.addEventListener('mouseenter', () => {
+                        clearTimeout(hoverTimer);
+                        hoverTimer = setTimeout(() => startMini(div.querySelector('.thumbWrapper'), item.id.videoId), 700);
+                    });
+                    div.addEventListener('mouseleave', () => {
+                        clearTimeout(hoverTimer);
+                        stopMini();
+                    });
+
+                    /* click to main player */
+                    div.addEventListener('click', (e) => {
+                        if (e.target.closest('.thumbWrapper')) return; // ignore if preview is running
+                        playNow(item.id.videoId);
+                    });
+                    resultsBox.appendChild(div);
+                });
+            }
+
+            /* ----- search logic (unchanged) ----- */
+            function doSearch() {
+                const key = apiKeyInput.value.trim();
+                const term = queryInput.value.trim();
+
+                /* save if new */
+                if (key !== cachedKey) {
+                    cachedKey = key;
+                    saveEncryptedKey(key)
+                        .then(() => console.log('✅ key saved', key))
+                        .catch(e => console.warn('❌ save failed', e));
+                }
+
+                if (!key) { toast('API key required', true); apiKeyInput.focus(); return; }
+                if (!term) { return; }
+                resultsBox.innerHTML = '<div class="spinner"></div>';
+                fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=15&q=${encodeURIComponent(term)}&key=${key}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.items) { toast('No results'); resultsBox.innerHTML = ''; return; }
+                        renderResults(data);
+                    })
+                    .catch(() => toast('Search failed – check key, quota or network', true));
+            }
+            searchBtn.onclick = doSearch;
+            queryInput.addEventListener('keydown', e => e.key === 'Enter' && doSearch());
+
+            searchBtn.onclick = doSearch;
+            queryInput.addEventListener('keydown', e => e.key === 'Enter' && doSearch());
+            apiKeyInput.addEventListener('keydown', e => e.key === 'Enter' && queryInput.focus());
+
+            /* ---------- auto-save / auto-load (IndexedDB only) ---------- */
+            const ENC_DB_NAME = 'ytKeyStore';
+            const ENC_STORE = 'keys';
+            const ENC_KEY = 'encryptedApiKey';   // ← this was missing
+
+            let cachedKey = '';
+
+            /* derive AES key (once) */
+            async function getCryptoKey() {
+                const db = await idbOpen();
+                let secret = await idbGet(db, 'secret');
+                if (!secret) {
+                    secret = crypto.getRandomValues(new Uint8Array(32));
+                    await idbPut(db, 'secret', secret);
+                }
+                return crypto.subtle.importKey('raw', secret, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+            }
+
+            /* encrypt & silently store in IndexedDB */
+            async function saveEncryptedKey(text) {
+                const aesKey = await getCryptoKey();
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const enc = new TextEncoder().encode(text);
+                const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, enc);
+
+                const blob = new Blob([iv, cipher]);                // iv + cipher
+                const db = await idbOpen();
+                await idbPut(db, ENC_KEY, await blob.arrayBuffer());
+            }
+
+            /* decrypt & load from IndexedDB */
+            async function loadEncryptedKey() {
+                try {
+                    const aesKey = await getCryptoKey();
+                    const db = await idbOpen();
+                    const buf = await idbGet(db, ENC_KEY);
+                    if (!buf) return;
+                    const data = new Uint8Array(buf);
+                    const iv = data.slice(0, 12);
+                    const cipher = data.slice(12);
+                    const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, cipher);
+                    cachedKey = new TextDecoder().decode(dec);
+                    console.log('✅ key loaded', cachedKey)
+                } catch {
+                    cachedKey = '';
+                    console.log('❌ load failed', cachedKey)
+                }
+            }
+
+            /* ---------- tiny IndexedDB wrapper ---------- */
+            function idbOpen() {
+                return new Promise((res, rej) => {
+                    const req = indexedDB.open(ENC_DB_NAME, 1);
+                    req.onerror = () => rej(req.error);
+                    req.onupgradeneeded = e => e.target.result.createObjectStore(ENC_STORE);
+                    req.onsuccess = () => res(req.result);
+                });
+            }
+            function idbGet(db, key) {
+                return new Promise(res => {
+                    const req = db.transaction(ENC_STORE, 'readonly').objectStore(ENC_STORE).get(key);
+                    req.onsuccess = () => res(req.result);
+                });
+            }
+            function idbPut(db, key, val) {
+                return new Promise(res => {
+                    const req = db.transaction(ENC_STORE, 'readwrite').objectStore(ENC_STORE).put(val, key);
+                    req.onsuccess = () => res();
+                });
+            }
+
+            /* try to load saved key */
+            loadEncryptedKey().then(() => {
+                if (cachedKey) apiKeyInput.value = cachedKey;
+            });
+        </script>
+    </body>
+
+</html>
